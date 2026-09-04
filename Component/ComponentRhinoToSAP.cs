@@ -114,7 +114,8 @@ namespace RhinoToSAP.Component
             }
             SAPConnector.RootLayerName = RLayer;
             LayerHelper.UnLockLayer(doc, RLayer);
-            
+            SAPConnector.UnitCheckMessage = report;
+
             //设置间隔
             SyncEngine.SyncInterval = intervalsSeconds * 1000;
 
@@ -186,21 +187,35 @@ namespace RhinoToSAP.Component
         //计时器刷新：只更新输出文字，不碰连接逻辑
         private void RefreshOutput(IGH_DataAccess DA)
         {
-            if (SAPConnector.IsConnected)
+
+            try
             {
-                TimeSpan duration = SAPConnector.ConnectDuration;
-                string durationText = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
-                string sapModelName = SAPConnector.SapModel.GetModelFilename(true);
-                DA.SetData(0, $"✅ 已完成连接,单位一致，" +
-                    $"\n已绑定图层：{SAPConnector.RootLayerName}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
-                    $"\n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次");
-                DA.SetData(1, true);
+                if (SAPConnector.IsConnected)
+                {
+                    TimeSpan duration = SAPConnector.ConnectDuration;
+                    string durationText = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
+                    string sapModelName = SAPConnector.SapModel.GetModelFilename(true);
+                    DA.SetData(0, $"✅ {SAPConnector.UnitCheckMessage}" +
+                        $"\n已绑定图层：{SAPConnector.RootLayerName}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
+                        $"\n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次");
+                    DA.SetData(1, true);
+                }
+                else
+                {
+                    DA.SetData(0, "❌ SAP连接已断开，请重新连接");
+                    DA.SetData(1, false);
+                    _isFirstConnection = false;
+                }
             }
-            else
+            catch(Exception  ex)
             {
-                DA.SetData(0, "❌ SAP连接已断开，请重新连接");
+                // 清理并更新状态，避免遗留不可用的 COM 引用
+                RhinoApp.WriteLine($"SAP连接状态刷新失败：{ex.Message}");
+                SAPConnector.Disconnect();
+                DA.SetData(0, "❌ SAP连接已断开（RPC不可用），请重新连接");
                 DA.SetData(1, false);
                 _isFirstConnection = false;
+                return;
             }
         }
 

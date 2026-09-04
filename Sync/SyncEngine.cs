@@ -54,6 +54,7 @@ namespace RhinoToSAP.Sync
         {
             if (isInitialized) return;
             SyncPaused = false;  // 重新连接时重置暂停标志
+            _syncCount = 0;// 重新连接时同步次数清零
             try
             {
                 // 注册Rhino对象事件：用户增删改对象时自动触发对应方法
@@ -153,7 +154,11 @@ namespace RhinoToSAP.Sync
         public static void OnTimerTick(object sender, EventArgs e)
         {
             // 每秒叫醒连接电池，让它刷新输出（连接时长、同步次数、IsConnected）
-            RhinoToSAP.Component.ComponentRhinoToSAP.Instance?.ExpireSolution(true);
+            var comp = RhinoToSAP.Component.ComponentRhinoToSAP.Instance;
+            if (comp != null)
+            {
+                comp.OnPingDocument()?.ScheduleSolution(20,d=>comp.ExpireSolution(false));
+            }
 
             // 两个计数器各自+1
             _syncCounter++;
@@ -174,8 +179,17 @@ namespace RhinoToSAP.Sync
                 {
                     RhinoApp.WriteLine("[SyncEngine] SAP连接已断开，自动锁定图层");
                     SAPConnector.Disconnect();
+                    _connCheckCounter = 0; // 重置计数器
+                    return;
                 }
-                _connCheckCounter = 0; // 重置计数器
+
+                if(!SAPConnector.CheckUnits(RhinoDoc.ActiveDoc, out string unitMsg))
+                {
+                    LayerHelper.LockLayer(RhinoDoc.ActiveDoc, SAPConnector.RootLayerName);
+                    SAPConnector.UnitCheckMessage = unitMsg;
+                    RhinoApp.WriteLine($"[SyncEngine] 单位不匹配,，自动锁定图层");
+                }
+                _connCheckCounter = 0;// 重置计数器
             }
         }
 

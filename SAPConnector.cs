@@ -23,12 +23,14 @@ namespace RhinoToSAP
         /// 是否已连接到SAP实例
         public static bool IsConnected => _sapApp != null && _sapModel != null;
 
-        /// SAP应用对象
+        // SAP应用对象
         public static cOAPI SapApp => _sapApp;
-        /// SAP模型对象
+        // SAP模型对象
         public static cSapModel SapModel => _sapModel;
         ///Rhino根图层
         public static string RootLayerName { get; set; }= string.Empty;
+        // 记录最近一次单位校验结果，供连接电池显示
+        public static string UnitCheckMessage = string.Empty;
 
         // 尝试连接到正在运行的SAP2000实例
         public static bool Connect(out string message)
@@ -135,6 +137,9 @@ namespace RhinoToSAP
         {
             try
             {
+                //保存映射表
+                SyncPersistenceIO.SaveMapping();
+
                 // 先停止同步引擎，注销事件、释放所有计时器
                 SyncEngine.Shutdown();
 
@@ -144,8 +149,6 @@ namespace RhinoToSAP
                 {
                     LayerHelper.LockLayer(doc, RootLayerName);
                 }
-                //保存映射表
-                SyncPersistenceIO.SaveMapping();
 
                 // 清空绑定的图层名
                 RootLayerName = string.Empty;

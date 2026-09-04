@@ -18,12 +18,26 @@ namespace RhinoToSAP.Tools
             {
                 return false;
             }
-            else
+            
+            if(IsLayerInHierarchy(layer, layerName))
             {
-                layer.IsLocked = true;
-                doc.Layers.Modify(layer, layer.Index, true);
-                return true;
+                Layer templayer = doc.Layers.FindName("RhinoToSAP_Temp");
+                if(templayer == null)
+                {
+                    templayer = new Layer();
+                    templayer.Name = "RhinoToSAP_Temp";
+                    int tempindex = doc.Layers.Add(templayer);
+                    doc.Layers.SetCurrentLayerIndex(tempindex, true);
+                }
+                else
+                {
+                    doc.Layers.SetCurrentLayerIndex(templayer.Index, true);
+                }
             }
+            
+            layer.IsLocked = true;
+            doc.Layers.Modify(layer, layer.Index, true);
+            return true;
         }
 
         //rhino图层解锁

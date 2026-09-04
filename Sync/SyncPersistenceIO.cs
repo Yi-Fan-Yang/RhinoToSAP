@@ -6,6 +6,7 @@ using Rhino;
 using Rhino.DocObjects;
 using System.Web.Script.Serialization;
 using RhinoToSAP.Data;
+using System.Collections;
 
 
 namespace RhinoToSAP.Sync
@@ -268,7 +269,7 @@ namespace RhinoToSAP.Sync
                 LoadedSapModelName = root.ContainsKey("sapmodelname") ? root["sapmodelname"].ToString() : string.Empty;
 
                 // 3. 解析映射表数组
-                foreach (object item in (object[])root["mappings"])//读取“mappings”对应的键值并转换成object数组
+                foreach (object item in (ArrayList)root["mappings"])//读取“mappings”对应的键值并转换成ArrayList
                 {
                     Dictionary<string, object> map = (Dictionary<string, object>)item;//遍历数组将item拆分成字典
                     Guid rhinoId = Guid.Parse((string)map["RhinoID"]);
@@ -277,7 +278,7 @@ namespace RhinoToSAP.Sync
                 }
 
                 // 4. 解析历史状态数组
-                foreach (object item in (object[])root["states"])
+                foreach (object item in (ArrayList)root["states"])
                 {
                     Dictionary<string, object> state = (Dictionary<string, object>)item;
                     LineState lineState = new LineState();
