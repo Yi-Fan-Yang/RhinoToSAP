@@ -14,35 +14,43 @@ namespace RhinoToSAP.Sync
     public static class SyncEngine
     {
         // ========== 核心调度字段 ==========
-        // 同步计时器
-        public static Timer syncTimer;
-        // SAP连接状态检测计时器，每隔5秒检测一次SAP是否还在运行
-        public static Timer connectionCheckTimer;
-        // 待处理变化列表：用HashSet自动去重，同一个对象修改多次只存一个ID
+        // 计时器
+        public static Timer Timer;
+
+        // 增量同步计数器：数到目标值就执行一次同步，然后归零
+        private static int _syncCounter = 0;
+        // 连接检测计数器：数到5就检查一次SAP连接，然后归零
+        private static int _connCheckCounter = 0;
+
         public static HashSet<Guid> pendingChanges = new HashSet<Guid>();
+        
         // 初始化标志位：避免重复注册事件、重复启动计时器
         public static bool isInitialized = false;
+        
         // 增量同步暂停标志：用户放弃接续后暂停，重新连接时重置
         public static bool SyncPaused = false;
 
         // ========== 常量配置 ==========
         // 同步间隔，默认3000ms
-        public static int _syncInterval = 3000;
+        private static int _syncInterval = 3000;
         public static int SyncInterval
         {
             get => _syncInterval; 
             set
             {
                 if (value < 1000) value = 1000; // 最小1000ms
-                if(value > 30000) value = 30000; // 最大30000ms
+                if(value > 60000) value = 60000; // 最大30000ms
                 _syncInterval = value;
                 // 如果计时器已经启动，同步更新计时器间隔
-                if (syncTimer != null)
+                if (Timer != null)
                 {
-                    syncTimer.Interval = _syncInterval;
+                    Timer.Interval = _syncInterval;
                 }
             }
         }
+        // 同步次数计数器：每次执行ProcessPendingChanges就+1
+        private static int _syncCount = 0;
+        public static int SyncCount => _syncCount;
 
         // ========== 公共方法：对外提供的接口 ==========
         // 初始化同步引擎：注册Rhino事件、启动防抖计时器，只需要调用一次
@@ -59,18 +67,14 @@ namespace RhinoToSAP.Sync
                 RhinoDoc.DeleteRhinoObject += SyncRhinoDispatcher.OnObjectDeleted;   // 对象删除事件
                 RhinoDoc.ReplaceRhinoObject += SyncRhinoDispatcher.OnObjectReplaced; // 对象修改事件（移动、改坐标等都会触发）
                 RhinoDoc.ModifyObjectAttributes += SyncRhinoDispatcher.OnObjectAttributesModified;//对象属性修改时间
+                RhinoDoc.BeginSaveDocument += SyncRhinoDispatcher.OnRhinoDocumentsaved;//文档保存事件
 
-                // 初始化同步计时器
-                syncTimer = new Timer();
-                syncTimer.Interval = _syncInterval; // 同步间隔
-                syncTimer.Tick += OnSyncTimerTick; // 绑定定时触发的方法
-                syncTimer.Start(); // 启动计时器
 
-                // 初始化连接状态检测计时器
-                connectionCheckTimer = new Timer();
-                connectionCheckTimer.Interval = 5000;
-                connectionCheckTimer.Tick += OnConnectionCheckTimerTick;
-                connectionCheckTimer.Start();
+                // 初始化计时器
+                Timer = new Timer();
+                Timer.Interval = 1000;
+                Timer.Tick += OnTimerTick;
+                Timer.Start();
                 //标记已经初始化
                 isInitialized = true;
             }
@@ -92,22 +96,15 @@ namespace RhinoToSAP.Sync
                 RhinoDoc.DeleteRhinoObject -= SyncRhinoDispatcher.OnObjectDeleted;
                 RhinoDoc.ReplaceRhinoObject -= SyncRhinoDispatcher.OnObjectReplaced;
                 RhinoDoc.ModifyObjectAttributes -= SyncRhinoDispatcher.OnObjectAttributesModified;
+                RhinoDoc.BeginSaveDocument -= SyncRhinoDispatcher.OnRhinoDocumentsaved;
 
                 // 停止并释放同步计时器
-                if (syncTimer != null)
+                if (Timer != null)
                 {
-                    syncTimer.Stop();
-                    syncTimer.Dispose();
-                    syncTimer = null;
+                    Timer.Stop();
+                    Timer.Dispose();
+                    Timer = null;
                 }
-                // 停止并释放连接状态检测计时器
-                if (connectionCheckTimer != null)
-                {
-                    connectionCheckTimer.Stop();
-                    connectionCheckTimer.Dispose();
-                    connectionCheckTimer = null;
-                }
-
                 isInitialized = false;
             }
             catch (Exception ex)
@@ -151,24 +148,40 @@ namespace RhinoToSAP.Sync
         {
             if (SyncPaused) return;  // 暂停中，不执行
             if (!isInitialized) return;
-            syncTimer.Stop();//计时器停止并重置
             ProcessPendingChanges();//立即处理全部待处理列表
-            syncTimer.Start();//计时器开始
+            _syncCounter = 0;//手动同步后归零
         }
 
 
         // ----- 计时器触发时执行 -----
         // 计时器Tick事件：批量处理所有待处理的变化
-        public static void OnSyncTimerTick(object sender, EventArgs e)
+        public static void OnTimerTick(object sender, EventArgs e)
         {
+            // 每秒叫醒连接电池，让它刷新输出（连接时长、同步次数、IsConnected）
+            RhinoToSAP.Component.ComponentRhinoToSAP.Instance?.ExpireSolution(true);
+
+            // 两个计数器各自+1
+            _syncCounter++;
+            _connCheckCounter++;
+
+            // 计数器1：数到同步间隔就执行增量同步
+            int syncTarget = SyncInterval / 1000; // 转换为秒
+            if (_syncCounter >= syncTarget)
+            {
                 ProcessPendingChanges();
-        }
-        // SAP连接检测计时器触发方法
-        public static void OnConnectionCheckTimerTick(object sender, EventArgs e)
-        {
-            if (SAPConnector.CheckConnectionAlive()) return;
-            RhinoApp.WriteLine("[SyncEngine] SAP连接已断开，自动锁定图层并清空同步状态");
-            SAPConnector.Disconnect();
+                _syncCounter = 0; // 重置计数器
+            }
+            
+            // 计数器2：数到5就检查SAP连接
+            if (_connCheckCounter >= 5)
+            {
+                if(SAPConnector.CheckConnectionAlive())
+                {
+                    RhinoApp.WriteLine("[SyncEngine] SAP连接已断开，自动锁定图层");
+                    SAPConnector.Disconnect();
+                }
+                _connCheckCounter = 0; // 重置计数器
+            }
         }
 
         //整体处理待处理列表
@@ -184,6 +197,7 @@ namespace RhinoToSAP.Sync
                     pendingChanges.Clear();
                     return;
                 }
+                _syncCount++;
                 Guid[] pengdingIds = pendingChanges.ToArray();
                 if (pengdingIds.Length == 0) return;
                 foreach (Guid i in pengdingIds)

@@ -42,7 +42,9 @@
   </ItemGroup>
   <ItemGroup>
     <Reference Include="CSiAPIv1">
-      <HintPath>..\..\..\..\..\Program Files\Computers and Structures\SAP2000 26\CSiAPIv1.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files\Computers and Structures\SAP2000 26\CSiAPIv1.dll</HintPath>
+      <Private>True</Private>
+      <EmbedInteropTypes>False</EmbedInteropTypes>
     </Reference>
     <Reference Include="Grasshopper">
       <HintPath>..\..\..\..\..\Program Files\Rhino 7\Plug-ins\Grasshopper\Grasshopper.dll</HintPath>

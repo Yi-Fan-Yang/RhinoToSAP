@@ -111,6 +111,12 @@ namespace RhinoToSAP.Sync
             }
         }
 
+        //保存
+        public static void OnRhinoDocumentsaved(object sender,DocumentSaveEventArgs e)
+        {
+            SyncPersistenceIO.SaveMapping();
+        }
+        
         // 处理单个Frame对象的变化：判断是新增、修改还是删除，调用对应方法
         public static void ProcessSingleChange(RhinoDoc doc, Guid rhinoId)
         {

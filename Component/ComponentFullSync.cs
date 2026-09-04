@@ -43,6 +43,7 @@ namespace RhinoToSAP.Component
             //执行全量同步 + 统计
             int beforeCount = SyncStateManager.HistoryStatesCount;
             SyncEngine.FullSync();
+            SyncPersistenceIO.SaveMapping();
             int afterCount = SyncStateManager.HistoryStatesCount;
             // 输出同步完成信息
             string message = $"✅ 全量同步完成，当前杆件总数：{afterCount}";

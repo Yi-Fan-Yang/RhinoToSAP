@@ -116,7 +116,7 @@ namespace RhinoToSAP.Sync
         {
             string filePath = GetMappingFilePath();
             if (string.IsNullOrEmpty(filePath)) return;
-            if (!File.Exists(filePath)) return;
+            if (File.Exists(filePath)) return;
             try
             {
                 string jsonText = SerializeMapping();

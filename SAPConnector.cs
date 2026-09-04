@@ -16,7 +16,10 @@ namespace RhinoToSAP
     {
         private static cOAPI _sapApp;
         private static cSapModel _sapModel;
-
+        //记录连接开始时间
+        private static DateTime _connectStartTime = DateTime.MinValue;
+        //对外只读，记录连接时长
+        public static TimeSpan ConnectDuration => _connectStartTime == DateTime.MinValue ? TimeSpan.Zero : DateTime.Now - _connectStartTime;
         /// 是否已连接到SAP实例
         public static bool IsConnected => _sapApp != null && _sapModel != null;
 
@@ -54,7 +57,7 @@ namespace RhinoToSAP
                     message = "❌ SAP实例已找到，但获取SapModel失败";
                     return false;
                 }
-
+                _connectStartTime = DateTime.Now;
                 message = "✅ 成功连接到SAP2000实例";
                 return true;
             }
@@ -141,13 +144,24 @@ namespace RhinoToSAP
                 {
                     LayerHelper.LockLayer(doc, RootLayerName);
                 }
+                //保存映射表
+                SyncPersistenceIO.SaveMapping();
 
                 // 清空绑定的图层名
                 RootLayerName = string.Empty;
 
                 // 清空SAP连接对象
-                _sapModel = null;
-                _sapApp = null;
+                if(_sapModel != null)
+                {
+                    Marshal.FinalReleaseComObject( _sapModel );
+                    _sapModel = null;
+                }
+                if(_sapApp != null)
+                {
+                    Marshal.FinalReleaseComObject(_sapApp);
+                    _sapApp = null;
+                }
+                _connectStartTime = DateTime.MinValue;
             }
             catch
             {

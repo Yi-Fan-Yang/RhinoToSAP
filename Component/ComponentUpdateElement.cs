@@ -64,6 +64,7 @@ namespace RhinoToSAP.Component
 
             // 执行手动同步
             SyncEngine.ManualSync();
+            SyncPersistenceIO.SaveMapping();
 
             // 统计结果
             int afterCount = SyncStateManager.HistoryStatesCount;

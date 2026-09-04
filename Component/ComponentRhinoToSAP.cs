@@ -13,6 +13,11 @@ namespace RhinoToSAP.Component
 {
     public class ComponentRhinoToSAP : GH_Component
     {
+        //静态引用：指向当前画布上的连接电池实例，供SyncEngine计时器刷新用
+        public static ComponentRhinoToSAP Instance;
+        // 实例标志：是否已完成首次连接
+        private bool _isFirstConnection = false;
+
         // 构造函数：定义电池名称、分类
         public ComponentRhinoToSAP()
           : base("SAP连接确认", "SAPConnect","确认是否成功连接到正在运行的SAP2000实例","RtoS", "Start")
@@ -37,6 +42,12 @@ namespace RhinoToSAP.Component
         // 核心执行逻辑
         protected override void SolveInstance(IGH_DataAccess DA)
         {
+            // 已完成首次连接：计时器触发时只刷新输出，不重复执行连接逻辑
+            if (_isFirstConnection)
+            {
+                RefreshOutput(DA);
+                return;
+            }
             string RLayer = string.Empty;
             string FrameSection = string.Empty;
             int intervalsSeconds = 3;
@@ -72,6 +83,7 @@ namespace RhinoToSAP.Component
             if (!trigger)
             {
                 SAPConnector.Disconnect();
+                _isFirstConnection = false;
                 report = "⏳ 已断开连接，图层已锁定";
                 DA.SetData(0, report);
                 DA.SetData(1, false);
@@ -110,6 +122,13 @@ namespace RhinoToSAP.Component
             SyncEngine.Initialize();
             //拿取映射文件路径
             string mapPath=SyncPersistenceIO.GetMappingFilePath();
+            string sapModelName = SAPConnector.SapModel.GetModelFilename(true);
+            TimeSpan duration = SAPConnector.ConnectDuration;
+            string durationText = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
+            string successReport = $"✅ 已完成连接,单位一致，" +
+                    $"/n已绑定图层：{RLayer}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
+                    $"/n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次";
+
             if (!string.IsNullOrEmpty(mapPath) && File.Exists(mapPath))
             {
                 var result
@@ -126,26 +145,62 @@ namespace RhinoToSAP.Component
                         DA.SetData(1, false);
                         return;
                     }
-                    report =$"✅ 已恢复上次映射并完成增量对齐,单位一致，已绑定图层：{RLayer}，同步间隔：{SyncEngine.SyncInterval / 1000}秒";
+                    _isFirstConnection = true;
+                    report = successReport;
                 }
                 else
                 {
                     //用户放弃接续：暂停后续所有增量同步（自动+手动）
                     SyncEngine.SyncPaused = true;
-                    if(SyncEngine.syncTimer != null)
+                    if(SyncEngine.Timer != null)
                     {
-                        SyncEngine.syncTimer.Stop();
+                        SyncEngine.Timer.Stop();
                     }
                     report = "⚠️ 已放弃接续恢复，增量同步已暂停，请重新连接以恢复";
                 }
             }
             else
             {
-                report = $"✅ 连接成功，单位一致，已绑定图层：{RLayer}，同步间隔：{SyncEngine.SyncInterval / 1000}秒";
+                SyncPersistenceIO.CreateEmptyMapping();
+                _isFirstConnection = true;
+                report = successReport;
             }
          
             DA.SetData(0, report);
             DA.SetData(1, isConnected);
+        }
+
+        // 组件被拖入画布时，注册实例引用
+        public override void AddedToDocument(GH_Document document)
+        {
+            base.AddedToDocument(document);
+            Instance = this;
+        }
+        // 组件从画布删除时，清空实例引用
+        public override void RemovedFromDocument(GH_Document document)
+        {
+            base.RemovedFromDocument(document);
+            Instance = null;
+        }
+        //计时器刷新：只更新输出文字，不碰连接逻辑
+        private void RefreshOutput(IGH_DataAccess DA)
+        {
+            if (SAPConnector.IsConnected)
+            {
+                TimeSpan duration = SAPConnector.ConnectDuration;
+                string durationText = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
+                string sapModelName = SAPConnector.SapModel.GetModelFilename(true);
+                DA.SetData(0, $"✅ 已完成连接,单位一致，" +
+                    $"/n已绑定图层：{SAPConnector.RootLayerName}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
+                    $"/n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次");
+                DA.SetData(1, true);
+            }
+            else
+            {
+                DA.SetData(0, "❌ SAP连接已断开，请重新连接");
+                DA.SetData(1, false);
+                _isFirstConnection = false;
+            }
         }
 
         // 电池图标（暂时用null，后面可以自定义）
