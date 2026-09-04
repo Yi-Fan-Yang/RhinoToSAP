@@ -40,7 +40,6 @@ namespace RhinoToSAP.Sync
             if (SyncFrame.isExploding) return;
             try
             {
-            if (SyncFrame.isExploding) return;
                 if (SyncFrame.TryExplodePolylineAndQueue(RhinoDoc.ActiveDoc, e.TheObject)) return;
                 AddToPendingIfValid(e.TheObject);
             }
@@ -112,7 +111,7 @@ namespace RhinoToSAP.Sync
         }
 
         //保存
-        public static void OnRhinoDocumentsaved(object sender,DocumentSaveEventArgs e)
+        public static void OnRhinoDocumentSaved(object sender,DocumentSaveEventArgs e)
         {
             SyncPersistenceIO.SaveMapping();
         }

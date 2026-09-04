@@ -126,8 +126,8 @@ namespace RhinoToSAP.Component
             TimeSpan duration = SAPConnector.ConnectDuration;
             string durationText = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
             string successReport = $"✅ 已完成连接,单位一致，" +
-                    $"/n已绑定图层：{RLayer}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
-                    $"/n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次";
+                    $"\n已绑定图层：{RLayer}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
+                    $"\n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次";
 
             if (!string.IsNullOrEmpty(mapPath) && File.Exists(mapPath))
             {
@@ -156,6 +156,7 @@ namespace RhinoToSAP.Component
                     {
                         SyncEngine.Timer.Stop();
                     }
+                    _isFirstConnection = true;
                     report = "⚠️ 已放弃接续恢复，增量同步已暂停，请重新连接以恢复";
                 }
             }
@@ -191,8 +192,8 @@ namespace RhinoToSAP.Component
                 string durationText = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
                 string sapModelName = SAPConnector.SapModel.GetModelFilename(true);
                 DA.SetData(0, $"✅ 已完成连接,单位一致，" +
-                    $"/n已绑定图层：{SAPConnector.RootLayerName}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
-                    $"/n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次");
+                    $"\n已绑定图层：{SAPConnector.RootLayerName}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
+                    $"\n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次");
                 DA.SetData(1, true);
             }
             else

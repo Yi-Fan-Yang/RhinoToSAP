@@ -96,7 +96,7 @@ namespace RhinoToSAP.Sync
                 Guid rhinoId = map.Key;
                 if (!SyncStateManager.TryGetHistory<LineState>(rhinoId, out _))
                 {
-                    errorMsg = $"\"数据不完整：映射存在但缺少对应的历史状态（对象{rhinoId}）";
+                    errorMsg = $"数据不完整：映射存在但缺少对应的历史状态（对象{rhinoId}）";
                     return false;
                 }
             }

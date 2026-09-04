@@ -39,13 +39,8 @@ namespace RhinoToSAP.Sync
             set
             {
                 if (value < 1000) value = 1000; // 最小1000ms
-                if(value > 60000) value = 60000; // 最大30000ms
+                if(value > 60000) value = 60000; // 最大60000ms
                 _syncInterval = value;
-                // 如果计时器已经启动，同步更新计时器间隔
-                if (Timer != null)
-                {
-                    Timer.Interval = _syncInterval;
-                }
             }
         }
         // 同步次数计数器：每次执行ProcessPendingChanges就+1
@@ -67,7 +62,7 @@ namespace RhinoToSAP.Sync
                 RhinoDoc.DeleteRhinoObject += SyncRhinoDispatcher.OnObjectDeleted;   // 对象删除事件
                 RhinoDoc.ReplaceRhinoObject += SyncRhinoDispatcher.OnObjectReplaced; // 对象修改事件（移动、改坐标等都会触发）
                 RhinoDoc.ModifyObjectAttributes += SyncRhinoDispatcher.OnObjectAttributesModified;//对象属性修改时间
-                RhinoDoc.BeginSaveDocument += SyncRhinoDispatcher.OnRhinoDocumentsaved;//文档保存事件
+                RhinoDoc.BeginSaveDocument += SyncRhinoDispatcher.OnRhinoDocumentSaved;//文档保存事件
 
 
                 // 初始化计时器
@@ -96,7 +91,7 @@ namespace RhinoToSAP.Sync
                 RhinoDoc.DeleteRhinoObject -= SyncRhinoDispatcher.OnObjectDeleted;
                 RhinoDoc.ReplaceRhinoObject -= SyncRhinoDispatcher.OnObjectReplaced;
                 RhinoDoc.ModifyObjectAttributes -= SyncRhinoDispatcher.OnObjectAttributesModified;
-                RhinoDoc.BeginSaveDocument -= SyncRhinoDispatcher.OnRhinoDocumentsaved;
+                RhinoDoc.BeginSaveDocument -= SyncRhinoDispatcher.OnRhinoDocumentSaved;
 
                 // 停止并释放同步计时器
                 if (Timer != null)
@@ -175,7 +170,7 @@ namespace RhinoToSAP.Sync
             // 计数器2：数到5就检查SAP连接
             if (_connCheckCounter >= 5)
             {
-                if(SAPConnector.CheckConnectionAlive())
+                if(!SAPConnector.CheckConnectionAlive())
                 {
                     RhinoApp.WriteLine("[SyncEngine] SAP连接已断开，自动锁定图层");
                     SAPConnector.Disconnect();
