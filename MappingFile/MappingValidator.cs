@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Rhino;
 using Rhino.DocObjects;
@@ -6,14 +6,15 @@ using Rhino.Geometry;
 using CSiAPIv1;
 using RhinoToSAP.Data;
 using RhinoToSAP.Tools;
+using RhinoToSAP.Sync;
 
-namespace RhinoToSAP.Sync
+namespace RhinoToSAP.MappingFile
 {
     /// <summary>
     /// 接续校验与增量对齐类：负责加载后的三层校验、Rhino/SAP两侧状态对比、生成待处理列表
     /// 只做校验和对比，不碰文件读写和同步执行
     /// </summary>
-    public static class SyncContinueValidator
+    public static class MappingValidator
     {
         // ========== 待处理列表容器 ==========
         // 待创建：Rhino里有、映射里没有的新对象
@@ -33,7 +34,7 @@ namespace RhinoToSAP.Sync
         /// </summary>
         /// <param name="errorMsg">校验失败时的错误信息</param>
         /// <returns>校验成功返回true，失败返回false</returns>
-        public static bool ValidateAndAlign(out string errorMsg)
+        public static bool Validate(out string errorMsg)
         {
             errorMsg = string.Empty;
             //清空待处理列表
@@ -43,12 +44,12 @@ namespace RhinoToSAP.Sync
             PendingLayerChange.Clear();
 
             //校验
-            if(!ValidateSapModelMatch(out string modelerror))
+            if (!ValidateSapModelMatch(out string modelerror))
             {
                 errorMsg = modelerror;
                 return false;
             }
-            if(!ValidateDataIntegrity(out string dataerror))
+            if (!ValidateDataIntegrity(out string dataerror))
             {
                 errorMsg = dataerror;
                 return false;
@@ -62,8 +63,33 @@ namespace RhinoToSAP.Sync
             return true;
         }
 
+        public static void ExecutePendingChanges()
+        {
+            // Frame单元
+            foreach (LineState state in PendingCreate)
+            {
+                SyncFrame.AddFrame(state);
+            }
+            foreach (LineState state in PendingUpdate)
+            {
+                SyncFrame.UpdateFrame(state);
+            }
+            foreach (Guid rhinoId in PendingDelete)
+            {
+                SyncFrame.DeleteFrame(rhinoId);
+            }
+            //Area单元
+            //图层变化
+            foreach (LayerChangeInfo change in PendingLayerChange)
+            {
+                if (SyncStateManager.TryGetMapping(change.RhinoId, out string sapId))
+                {
+                    SyncSapGeneral.UpdateSapObjectGroup(sapId, change.OldLayerFullPath, change.NewLayerFullPath);
+                }
+            }
+        }
 
-        // ========== 私有辅助方法：三层校验 ==========
+        // ========== 私有辅助方法：校验 ==========
 
         /// <summary>
         /// 校验1：文件版本号兼容性
@@ -85,7 +111,7 @@ namespace RhinoToSAP.Sync
         }
 
         /// <summary>
-        /// 校验3：映射数据完整性（映射表和历史状态是不是对应、有没有损坏）
+        /// 校验2：映射数据完整性（映射表和历史状态是不是对应、有没有损坏）
         /// </summary>
         private static bool ValidateDataIntegrity(out string errorMsg)
         {
@@ -113,7 +139,7 @@ namespace RhinoToSAP.Sync
         }
 
 
-        // ========== 私有辅助方法：增量对齐 ==========
+        // ========== 校验3：增量对齐 ==========
 
         /// <summary>
         /// Rhino侧遍历：对比当前Rhino对象和历史状态，生成待创建/待更新列表
@@ -144,17 +170,17 @@ namespace RhinoToSAP.Sync
                     if (!LineHelper.IsValidLineObject(obj)) continue;
 
                     // 6. 把当前直线转成LineState状态快照
-                    LineState currentState=LineHelper.ToLineState(obj);
+                    LineState currentState = LineHelper.ToLineState(obj);
 
                     // 7. 查内存里的历史状态，看这个对象之前有没有同步过
-                    if(!SyncStateManager.TryGetHistory<LineState>(currentState.RhinoLineId,out LineState oldState))
+                    if (!SyncStateManager.TryGetHistory<LineState>(currentState.RhinoLineId, out LineState oldState))
                     {
                         // 查不到：说明是新对象，加到待创建列表
                         PendingCreate.Add(currentState);
                         continue;
                     }
                     //8. 查到了：判断图层是否发生变化
-                    if(oldState.LayerName != currentState.LayerName)
+                    if (oldState.LayerName != currentState.LayerName)
                     {
                         // 图层变了：加到待图层变更列表
                         PendingLayerChange.Add(new LayerChangeInfo
@@ -210,17 +236,17 @@ namespace RhinoToSAP.Sync
             // 检测链接
             if (!SAPConnector.IsConnected) return;
             //2. 调用GetNameList，取出SAP里所有Frame名称
-            int count=0;
+            int count = 0;
             string[] frameNames = new string[0];
-            int ret=SAPConnector.SapModel.FrameObj.GetNameList(ref count, ref frameNames);
+            int ret = SAPConnector.SapModel.FrameObj.GetNameList(ref count, ref frameNames);
             if (ret != 0) return; // 获取失败，直接返回
             //3. 遍历映射表，检查每个SAP FrameID是否还存在
             HashSet<string> aliveFrames = new HashSet<string>(frameNames);
             List<Guid> deadMappings = new List<Guid>();
             foreach (var map in SyncStateManager.GetAllMappings())
             {
-                Guid rhinoID=map.Key;
-                string sapFrameID=map.Value;
+                Guid rhinoID = map.Key;
+                string sapFrameID = map.Value;
 
                 if (!aliveFrames.Contains(sapFrameID))
                 {
@@ -234,5 +260,8 @@ namespace RhinoToSAP.Sync
                 SyncStateManager.RemoveHistory(rhinoID);
             }
         }
+
+
+
     }
 }

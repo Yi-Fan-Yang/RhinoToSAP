@@ -145,7 +145,7 @@ namespace RhinoToSAP.Sync
         {
             if (!IsMappingLoaded)
             {
-                RhinoApp.WriteLine("[FullSync] 映射文件未加载，请先加载或新建映射文件");
+                RhinoApp.WriteLine("[ManualSync]映射文件未加载，请先加载或新建映射文件");
                 return;
             }
             if (!isInitialized) return;

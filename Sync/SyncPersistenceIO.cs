@@ -105,7 +105,16 @@ namespace RhinoToSAP.Sync
                 return false;
             }
         }
-        
+
+        //卸载当前映射文件，清空所有状态，回到未加载状态（加载失败/用户选否时回滚用）
+        public static void UnLoadMapping()
+        {
+            CurrentMappingFilePath = string.Empty;
+            LoadedVersion = 0;
+            LoadedSapModelName = string.Empty;
+            SyncStateManager.ClearState();
+        }
+
         //连接成功创建空映射
         public static bool CreateEmptyMapping(string filePath)
         {

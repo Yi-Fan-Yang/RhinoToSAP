@@ -150,7 +150,7 @@ namespace RhinoToSAP
                 if (SyncEngine.IsMappingLoaded)
                 {
                     var result = Rhino.UI.Dialogs.ShowMessage(
-                                "是否保存当前映射文件？", "关闭Rhino",
+                                "是否保存当前映射文件？", "保存映射文件",
                                 Rhino.UI.ShowMessageButton.YesNoCancel,
                                 Rhino.UI.ShowMessageIcon.Question);
                     if (result == Rhino.UI.ShowMessageResult.Yes)
@@ -188,6 +188,10 @@ namespace RhinoToSAP
             catch
             {
                 // 吞掉异常，避免断开过程中出错导致Rhino崩溃
+            }
+            finally
+            {
+                _isDisconnecting = false;  // 无论成功失败都重置
             }
         }
     }
