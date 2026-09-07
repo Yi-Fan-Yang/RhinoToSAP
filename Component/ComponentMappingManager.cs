@@ -1,4 +1,5 @@
 ﻿using Grasshopper.Kernel;
+using Rhino;
 using RhinoToSAP.MappingFile;
 using RhinoToSAP.Sync;
 using System;
@@ -37,51 +38,27 @@ namespace RhinoToSAP.Component
         private static string report = "⏳ 等待操作（点击上方按钮）";
         private static string filePath = SyncPersistenceIO.CurrentMappingFilePath;
         private static bool isReady = SyncEngine.IsMappingLoaded;
-        private static void Result()
-        {
-            report = MappingFileManager.report;
-            filePath = MappingFileManager.filePath;
-            isReady = MappingFileManager.isReady;
-        }
+
         // 核心执行逻辑
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            // 1. 读取三个按钮输入
+            // 读取输入
             bool load = false, createNew = false, save = false, saveAs = false;
             DA.GetData(0, ref load);
             DA.GetData(1, ref createNew);
             DA.GetData(2, ref save);
             DA.GetData(3, ref saveAs);
 
-            // 2. 加载按钮
-            if (load)
-            {
-                MappingFileManager.LoadWithDialog();
-                Result();
-            }
+            // 文件操作
+            if (load) MappingFileManager.LoadWithDialog();
+            if (createNew) MappingFileManager.NewWithDialog();
+            if (save) MappingFileManager.Save();
+            if (saveAs) MappingFileManager.SaveAsWithDialog();
 
-            // 3. 新建按钮
-            if (createNew)
-            {
-                MappingFileManager.NewWithDialog();
-                Result();
-            }
-            // 4. 保存按钮
-            if (save)
-            {
-                MappingFileManager.SaveWithDialog();
-                Result();
-            }
-            // 5. 另存为按钮
-            if (saveAs)
-            {
-                MappingFileManager.SaveAsWithDialog();
-                Result();
-            }
-            // 6. 输出
-            DA.SetData(0, report);
-            DA.SetData(1, filePath);
-            DA.SetData(2, isReady);
+            //  输出
+            DA.SetData(0, MappingFileManager.report);
+            DA.SetData(1, MappingFileManager.filePath);
+            DA.SetData(2, MappingFileManager.isReady);
         }
 
         // 电池图标

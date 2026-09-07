@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using CSiAPIv1;
 using RhinoToSAP.Sync;
 using RhinoToSAP.Tools;
+using System.Linq.Expressions;
 
 namespace RhinoToSAP
 {
@@ -35,10 +36,7 @@ namespace RhinoToSAP
         private static bool _isDisconnecting = false;
 
 
-
-
-
-        //方法
+        //==================方法=====================
         // 尝试连接到正在运行的SAP2000实例
         public static bool Connect(out string message)
         {
@@ -89,35 +87,43 @@ namespace RhinoToSAP
         //检查Rhino和SAP的单位是否一致
         public static bool CheckUnits(RhinoDoc doc, out string message)
         {
-            UnitSystem rhinoUnit = doc.ModelUnitSystem;
-            eUnits sapUnit = _sapModel.GetPresentUnits();
+            try
+            {
+                UnitSystem rhinoUnit = doc.ModelUnitSystem;
+                eUnits sapUnit = _sapModel.GetPresentUnits();
 
-            eUnits expectedSapUnit;
-            switch(rhinoUnit)
-            {
-                case UnitSystem.Millimeters:
-                    expectedSapUnit = eUnits.kN_mm_C;
-                    break;
-                case UnitSystem.Centimeters:
-                    expectedSapUnit = eUnits.kN_cm_C;
-                    break;
-                case UnitSystem.Meters:
-                    expectedSapUnit = eUnits.kN_m_C;
-                    break;
-                default:
-                    message = $"❌ 连接成功，不支持的Rhino单位：{rhinoUnit}";
+                eUnits expectedSapUnit;
+                switch (rhinoUnit)
+                {
+                    case UnitSystem.Millimeters:
+                        expectedSapUnit = eUnits.kN_mm_C;
+                        break;
+                    case UnitSystem.Centimeters:
+                        expectedSapUnit = eUnits.kN_cm_C;
+                        break;
+                    case UnitSystem.Meters:
+                        expectedSapUnit = eUnits.kN_m_C;
+                        break;
+                    default:
+                        message = $"❌ 连接成功，不支持的Rhino单位：{rhinoUnit}";
+                        return false;
+                }
+                if (expectedSapUnit == sapUnit)
+                {
+                    // 单位一致
+                    message = $"✅ 连接成功，单位一致，当前单位：{rhinoUnit}";
+                    return true;
+                }
+                else
+                {
+                    // 单位不一致
+                    message = $"❌ 连接成功，单位不一致：Rhino单位是{rhinoUnit}，SAP单位是{sapUnit}，请统一单位";
                     return false;
+                }
             }
-            if (expectedSapUnit == sapUnit)
+            catch
             {
-                // 单位一致
-                message = $"✅ 连接成功，单位一致，当前单位：{rhinoUnit}";
-                return true;
-            }
-            else
-            {
-                // 单位不一致
-                message = $"❌ 连接成功，单位不一致：Rhino单位是{rhinoUnit}，SAP单位是{sapUnit}，请统一单位";
+                message = $"SAP已退出";
                 return false;
             }
         }

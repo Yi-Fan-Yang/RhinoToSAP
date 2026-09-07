@@ -202,9 +202,16 @@ namespace RhinoToSAP.Sync
             root["saving time"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             //Sap文件名记录
             string sapModelName = string.Empty;
-            if(SAPConnector.IsConnected)
+            try
             {
-                sapModelName = SAPConnector.SapModel.GetModelFilename(true);
+                if (SAPConnector.IsConnected)
+                {
+                    sapModelName = SAPConnector.SapModel.GetModelFilename(true);
+                }
+            }
+            catch
+            {
+                sapModelName = string.Empty;
             }
             root["sapmodelname"] = sapModelName;
 

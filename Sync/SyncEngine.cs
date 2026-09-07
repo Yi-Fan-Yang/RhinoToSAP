@@ -246,8 +246,8 @@ namespace RhinoToSAP.Sync
                 }
                 _syncCount++;
                 Guid[] pengdingIds = pendingChanges.ToArray();
-                RhinoApp.WriteLine($"[处理] 开始处理{pengdingIds.Length}个对象");
                 if (pengdingIds.Length == 0) return;
+                RhinoApp.WriteLine($"[处理] 开始处理{pengdingIds.Length}个对象");
                 foreach (Guid i in pengdingIds)
                 {
                     try

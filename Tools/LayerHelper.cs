@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Grasshopper.Kernel.Parameters.Hints;
 using Rhino;
 using Rhino.DocObjects;
 using Rhino.Geometry;
@@ -91,5 +92,33 @@ namespace RhinoToSAP.Tools
             Layer layer = obj.Document.Layers[obj.Attributes.LayerIndex];
             return IsLayerInHierarchy(layer, rootLayerName);
         }
+        
+        // 获取根图层及其子图层下的所有有效对象
+        public static List<RhinoObject> GetValidObjectsInLayer(RhinoDoc doc, string rootLayerName)
+        {
+            List<RhinoObject> result = new List<RhinoObject>();
+            if (doc == null || string.IsNullOrEmpty(rootLayerName)) return result;
+
+            Layer rootlayer = doc.Layers.FindName(rootLayerName);
+            if (rootlayer == null) return result;
+
+            List<Layer> allLayers = new List<Layer>();
+            GetAllChildLayers(rootlayer, allLayers);
+
+            foreach (Layer i in allLayers)
+            {
+                RhinoObject[] objects = doc.Objects.FindByLayer(i);
+                if (objects == null) continue;
+                foreach (RhinoObject obj in objects)
+                {
+                    if (LineHelper.IsValidLineObject(obj)) result.Add(obj);
+                }
+            }
+            return result;
+        }
+
+
+
+
     }
 }
