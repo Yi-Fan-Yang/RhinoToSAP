@@ -119,55 +119,16 @@ namespace RhinoToSAP.Component
             //设置间隔
             SyncEngine.SyncInterval = intervalsSeconds * 1000;
 
-            //初始化同步引擎(仅第一次调用会初始化)
+            //初始化同步引擎(只注册Rhino事件，不启动Timer)
             SyncEngine.Initialize();
-            //拿取映射文件路径
-            string mapPath=SyncPersistenceIO.GetMappingFilePath();
-            string sapModelName = SAPConnector.SapModel.GetModelFilename(true);
-            TimeSpan duration = SAPConnector.ConnectDuration;
-            string durationText = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
-            string successReport = $"✅ 已完成连接,单位一致，" +
-                    $"\n已绑定图层：{RLayer}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
-                    $"\n已与SAP程序[{sapModelName}]连接{durationText}，已同步{SyncEngine.SyncCount}次";
 
-            if (!string.IsNullOrEmpty(mapPath) && File.Exists(mapPath))
-            {
-                var result
-                    = Rhino.UI.Dialogs.ShowMessage(
-                        $"检测到映射文件：{mapPath}\n是否加载？\n若不加载，将会创建新的映射文件。", "映射文件加载",
-                        Rhino.UI.ShowMessageButton.YesNo,
-                        Rhino.UI.ShowMessageIcon.Question);
-                if(result == Rhino.UI.ShowMessageResult.Yes)
-                {
-                    if (!SyncContinueManager.TryContinue(out string errorMsg))
-                    {
-                        report = $"❌ 映射文件加载失败：{errorMsg}";
-                        DA.SetData(0, report);
-                        DA.SetData(1, false);
-                        return;
-                    }
-                    _isFirstConnection = true;
-                    report = successReport;
-                }
-                else
-                {
-                    //用户放弃接续：暂停后续所有增量同步（自动+手动）
-                    SyncEngine.SyncPaused = true;
-                    if(SyncEngine.Timer != null)
-                    {
-                        SyncEngine.Timer.Stop();
-                    }
-                    _isFirstConnection = true;
-                    report = "⚠️ 已放弃接续恢复，增量同步已暂停，请重新连接以恢复";
-                }
-            }
-            else
-            {
-                SyncPersistenceIO.CreateEmptyMapping();
-                _isFirstConnection = true;
-                report = successReport;
-            }
-         
+            //连接成功
+            _isFirstConnection= true;
+            string sapModelName = SAPConnector.SapModel.GetModelFilename(true);
+            report = $"✅ 已完成连接，单位一致" +
+                $"\n已绑定图层：{RLayer}，同步间隔：{SyncEngine.SyncInterval / 1000}秒" +
+                $"\n已与SAP程序[{sapModelName}]连接" ;
+           
             DA.SetData(0, report);
             DA.SetData(1, isConnected);
         }
@@ -187,7 +148,6 @@ namespace RhinoToSAP.Component
         //计时器刷新：只更新输出文字，不碰连接逻辑
         private void RefreshOutput(IGH_DataAccess DA)
         {
-
             try
             {
                 if (SAPConnector.IsConnected)
@@ -211,7 +171,6 @@ namespace RhinoToSAP.Component
             {
                 // 清理并更新状态，避免遗留不可用的 COM 引用
                 RhinoApp.WriteLine($"SAP连接状态刷新失败：{ex.Message}");
-                SAPConnector.Disconnect();
                 DA.SetData(0, "❌ SAP连接已断开（RPC不可用），请重新连接");
                 DA.SetData(1, false);
                 _isFirstConnection = false;

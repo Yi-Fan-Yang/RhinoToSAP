@@ -11,10 +11,8 @@ using System.Collections;
 
 namespace RhinoToSAP.Sync
 {
-    /// <summary>
-    /// 映射文件持久化读写类：负责映射表和历史状态的磁盘读写、备份、文件校验
-    /// 只做文件IO，不碰任何业务逻辑
-    /// </summary>
+    // 映射文件持久化读写类：负责映射表和历史状态的磁盘读写、备份、文件校验
+    // 只做文件IO，不碰任何业务逻辑
     public static class SyncPersistenceIO
     {
         // ========== 常量配置 ==========
@@ -28,26 +26,24 @@ namespace RhinoToSAP.Sync
         public static int LoadedVersion { get; private set; } = 0;
         // 记录本次加载的映射文件的sap模型名称
         public static string LoadedSapModelName { get; private set; } = string.Empty;
+        // 当前加载/新建的映射文件完整路径
+        public static string CurrentMappingFilePath = string.Empty;
 
 
         // ========== 公共方法：对外提供的读写接口 ==========
 
-        /// <summary>
         /// 把当前内存里的映射表和历史状态保存到磁盘文件
-        /// </summary>
-        /// <returns>保存成功返回true，失败返回false</returns>
         public static bool SaveMapping()
         {
             try
             {
-                // 1. 生成映射文件路径，为空说明Rhino文件没保存，直接返回失败
-                string filepath = GetMappingFilePath();
-                if (string.IsNullOrEmpty(filepath))
+                // 1. 检查是否有已加载的映射文件
+                if (string.IsNullOrEmpty(CurrentMappingFilePath))
                 {
-                    RhinoApp.WriteLine("请先保存Rhino模型文件，再尝试保存映射表。");
+                    RhinoApp.WriteLine("没有已加载的映射文件，请先加载或新建");
                     return false;
                 }
-
+                string filepath = CurrentMappingFilePath;
                 // 2. 备份旧文件（方法内部已经做了异常处理，备份失败不影响这里）
                 BackupOldFile(filepath);
 
@@ -65,28 +61,25 @@ namespace RhinoToSAP.Sync
             }
         }
 
-        /// <summary>
-        /// 从磁盘文件读取映射表和历史状态到内存
-        /// </summary>
-        /// <param name="errorMsg">读取失败时的错误信息</param>
-        /// <returns>读取成功返回true，失败返回false</returns>
-        public static bool LoadMapping(out string errorMsg)
+        // 从磁盘文件读取映射表和历史状态到内存
+        public static bool LoadMapping(string filePath, out string errorMsg)
         {
             errorMsg = string.Empty;
             try
             {
-                // 1. 生成映射文件路径，为空说明Rhino文件没保存
-                string filePath = GetMappingFilePath();
+                // 1. 检查传入的路径是否有效
                 if (string.IsNullOrEmpty(filePath))
                 {
-                    RhinoApp.WriteLine("请先保存Rhino模型文件，再尝试加载映射表。");
+                    RhinoApp.WriteLine("映射文件路径为空");
+                    errorMsg = "映射文件路径为空";
                     return false;
                 }
 
-                // 2. 文件不存在，属于正常情况（第一次同步还没保存过），返回失败
+                // 2. 文件不存在
                 if (!File.Exists(filePath))
                 {
-                    errorMsg = "未找到映射文件，属于首次同步，将执行全量同步";
+                    RhinoApp.WriteLine($"未找到映射文件：{filePath}");
+                    errorMsg = $"未找到映射文件：{filePath}";
                     return false;
                 }
 
@@ -102,6 +95,7 @@ namespace RhinoToSAP.Sync
                 }
 
                 RhinoApp.WriteLine($"[加载映射] 成功：{filePath}");
+                CurrentMappingFilePath = filePath; // 记录当前加载的映射文件路径
                 return true;
             }
             catch (Exception ex)
@@ -113,50 +107,46 @@ namespace RhinoToSAP.Sync
         }
         
         //连接成功创建空映射
-        public static void CreateEmptyMapping()
+        public static bool CreateEmptyMapping(string filePath)
         {
-            string filePath = GetMappingFilePath();
-            if (string.IsNullOrEmpty(filePath)) return;
-            if (File.Exists(filePath)) return;
+            if (string.IsNullOrEmpty(filePath)) return false;
             try
             {
                 string jsonText = SerializeMapping();
                 File.WriteAllText(filePath, jsonText, Encoding.UTF8);
+                CurrentMappingFilePath = filePath; // 记录当前创建的映射文件路径
+                return true;
             }
             catch (Exception ex)
             {
                 RhinoApp.WriteLine($"创建映射文件失败：{ex.Message}");
+                return false;
             }
         }
 
-        /// <summary>
-        /// 生成和当前Rhino模型绑定的映射文件完整路径
-        /// </summary>
-        public static string GetMappingFilePath()
+        // 另存为：把当前映射数据保存到新文件，覆盖已存在的文件，成功后切换当前路径
+        public static bool SaveMappingAs(string newFilePath)
         {
-            RhinoDoc doc = RhinoDoc.ActiveDoc;
-            if (doc == null) return string.Empty;// 没有打开的模型
-            if (string.IsNullOrEmpty(doc.Path)) return string.Empty; // 模型未保存过
-
+            if (string.IsNullOrEmpty(newFilePath)) return false;
             try
             {
-                string dirctory = Path.GetDirectoryName(doc.Path);// rhino模型所在目录
-                string filename = Path.GetFileNameWithoutExtension(doc.Path);// 模型文件名（不带扩展名）
-                return Path.Combine(dirctory, filename + ".syncmap.json");// 映射文件名规则：模型文件名.syncmap.json
+                BackupOldFile(newFilePath); // 备份旧文件
+                string json = SerializeMapping();
+                File.WriteAllText(newFilePath, json, Encoding.UTF8);
+                CurrentMappingFilePath = newFilePath; // 记录当前创建的映射文件路径
+                return true;
             }
-            catch
+            catch (Exception ex)
             {
-                return string.Empty;
+                RhinoApp.WriteLine($"另存为映射文件失败：{ex.Message}");
+                return false;
             }
         }
-
 
         // ========== 私有辅助方法 ==========
 
 
-        /// <summary>
-        /// 备份上一版本的映射文件
-        /// </summary>
+        // 备份上一版本的映射文件
         private static void BackupOldFile(string filePath)
         {
             try
@@ -173,9 +163,7 @@ namespace RhinoToSAP.Sync
             }
         }
 
-        /// <summary>
-        /// 校验文件头和版本号
-        /// </summary>
+        // 校验文件头和版本号
         private static bool ValidateFileHeader(Dictionary<string, object> root, out string errorMsg)
         {
             errorMsg = string.Empty;

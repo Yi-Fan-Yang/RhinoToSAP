@@ -27,8 +27,8 @@ namespace RhinoToSAP.Sync
         // 初始化标志位：避免重复注册事件、重复启动计时器
         public static bool isInitialized = false;
         
-        // 增量同步暂停标志：用户放弃接续后暂停，重新连接时重置
-        public static bool SyncPaused = false;
+        //映射文件是否已加载成功（只有连接+映射都就绪，Timer才启动，同步才可用）
+        public static bool IsMappingLoaded = false;
 
         // ========== 常量配置 ==========
         // 同步间隔，默认3000ms
@@ -53,7 +53,6 @@ namespace RhinoToSAP.Sync
         public static void Initialize()
         {
             if (isInitialized) return;
-            SyncPaused = false;  // 重新连接时重置暂停标志
             _syncCount = 0;// 重新连接时同步次数清零
             try
             {
@@ -63,14 +62,8 @@ namespace RhinoToSAP.Sync
                 RhinoDoc.DeleteRhinoObject += SyncRhinoDispatcher.OnObjectDeleted;   // 对象删除事件
                 RhinoDoc.ReplaceRhinoObject += SyncRhinoDispatcher.OnObjectReplaced; // 对象修改事件（移动、改坐标等都会触发）
                 RhinoDoc.ModifyObjectAttributes += SyncRhinoDispatcher.OnObjectAttributesModified;//对象属性修改时间
-                RhinoDoc.BeginSaveDocument += SyncRhinoDispatcher.OnRhinoDocumentSaved;//文档保存事件
+                RhinoApp.Closing += SyncRhinoDispatcher.OnRhinoClosing;  // Rhino关闭时弹窗保存映射文件
 
-
-                // 初始化计时器
-                Timer = new Timer();
-                Timer.Interval = 1000;
-                Timer.Tick += OnTimerTick;
-                Timer.Start();
                 //标记已经初始化
                 isInitialized = true;
             }
@@ -92,7 +85,7 @@ namespace RhinoToSAP.Sync
                 RhinoDoc.DeleteRhinoObject -= SyncRhinoDispatcher.OnObjectDeleted;
                 RhinoDoc.ReplaceRhinoObject -= SyncRhinoDispatcher.OnObjectReplaced;
                 RhinoDoc.ModifyObjectAttributes -= SyncRhinoDispatcher.OnObjectAttributesModified;
-                RhinoDoc.BeginSaveDocument -= SyncRhinoDispatcher.OnRhinoDocumentSaved;
+                RhinoApp.Closing -= SyncRhinoDispatcher.OnRhinoClosing;
 
                 // 停止并释放同步计时器
                 if (Timer != null)
@@ -102,6 +95,7 @@ namespace RhinoToSAP.Sync
                     Timer = null;
                 }
                 isInitialized = false;
+                IsMappingLoaded = false;  // 停止同步引擎时重置映射加载状态
             }
             catch (Exception ex)
             {
@@ -113,10 +107,17 @@ namespace RhinoToSAP.Sync
         public static void FullSync()
         {
             if (!SAPConnector.IsConnected|| (string.IsNullOrEmpty(SAPConnector.RootLayerName)   )) return;
+            if (!IsMappingLoaded)
+            {
+                RhinoApp.WriteLine("[FullSync] 映射文件未加载，请先加载或新建映射文件");
+                return;
+            }
             RhinoDoc doc = RhinoDoc.ActiveDoc;
             if (doc == null) return;
+            
             //初始化前清空状态，避免旧的映射关系干扰
             SyncStateManager.ClearState();
+            
             //递归获取根图层下的所有子图层
             Layer rootlayer = doc.Layers.FindName(SAPConnector.RootLayerName);
             if (rootlayer == null) return; 
@@ -142,7 +143,11 @@ namespace RhinoToSAP.Sync
         //手动同步：立即处理所有待处理列表，不等待计时器触发
         public static void ManualSync()
         {
-            if (SyncPaused) return;  // 暂停中，不执行
+            if (!IsMappingLoaded)
+            {
+                RhinoApp.WriteLine("[FullSync] 映射文件未加载，请先加载或新建映射文件");
+                return;
+            }
             if (!isInitialized) return;
             ProcessPendingChanges();//立即处理全部待处理列表
             _syncCounter = 0;//手动同步后归零
@@ -150,6 +155,30 @@ namespace RhinoToSAP.Sync
 
 
         // ----- 计时器触发时执行 -----
+        // 根据连接状态和映射加载状态，自动启动或停止Timer
+        public static void UpdateTimerState()
+        {
+            bool shouldRun = SAPConnector.IsConnected && IsMappingLoaded;
+            if (shouldRun && Timer == null)
+            {
+                // 初始化计时器
+                Timer = new Timer();
+                Timer.Interval = 1000;
+                Timer.Tick += OnTimerTick;
+                Timer.Start();
+                RhinoApp.WriteLine("[SyncEngine] Timer已启动");
+            }
+            else if (!shouldRun && Timer != null)
+            {
+                Timer.Stop();
+                Timer.Dispose();
+                Timer = null;
+                _syncCounter = 0;
+                _connCheckCounter = 0;
+                RhinoApp.WriteLine("[SyncEngine] Timer已停止");
+            }
+        }
+
         // 计时器Tick事件：批量处理所有待处理的变化
         public static void OnTimerTick(object sender, EventArgs e)
         {
@@ -157,7 +186,16 @@ namespace RhinoToSAP.Sync
             var comp = RhinoToSAP.Component.ComponentRhinoToSAP.Instance;
             if (comp != null)
             {
-                comp.OnPingDocument()?.ScheduleSolution(20,d=>comp.ExpireSolution(false));
+                var ghDoc = comp.OnPingDocument();
+                if (ghDoc != null)
+                {
+                    ghDoc.ScheduleSolution(5, doc => 
+                    {
+                        comp.ExpireSolution(false);//电池过期
+                        comp.Params.Output[0].ExpireSolution(false);//输出0过期
+                        comp.Params.Output[1].ExpireSolution(false);//输出1过期
+                    });
+                }
             }
 
             // 两个计数器各自+1
@@ -196,7 +234,7 @@ namespace RhinoToSAP.Sync
         //整体处理待处理列表
         public static void ProcessPendingChanges()
         {
-            if (SyncPaused) return;  // 暂停中，不处理
+            if (!IsMappingLoaded) return;  // 映射文件未加载，不处理
             try
             {
                 if (!SAPConnector.IsConnected
@@ -208,6 +246,7 @@ namespace RhinoToSAP.Sync
                 }
                 _syncCount++;
                 Guid[] pengdingIds = pendingChanges.ToArray();
+                RhinoApp.WriteLine($"[处理] 开始处理{pengdingIds.Length}个对象");
                 if (pengdingIds.Length == 0) return;
                 foreach (Guid i in pengdingIds)
                 {
@@ -215,14 +254,17 @@ namespace RhinoToSAP.Sync
                     {
                         SyncRhinoDispatcher.ProcessSingleChange(RhinoDoc.ActiveDoc, i);
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        RhinoApp.WriteLine($"[处理] 对象{i}处理异常：{ex.Message}");
                     }
                 }
                 pendingChanges.Clear();
+                RhinoApp.WriteLine("[处理] 处理完成");
             }
-            catch
+            catch (Exception ex)
             {
+                RhinoApp.WriteLine($"[处理] 整体异常：{ex.Message}");
                 pendingChanges.Clear();
             }
         }

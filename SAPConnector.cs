@@ -31,7 +31,14 @@ namespace RhinoToSAP
         public static string RootLayerName { get; set; }= string.Empty;
         // 记录最近一次单位校验结果，供连接电池显示
         public static string UnitCheckMessage = string.Empty;
+        // 防止断开过程中重复调用Disconnect导致重复弹窗
+        private static bool _isDisconnecting = false;
 
+
+
+
+
+        //方法
         // 尝试连接到正在运行的SAP2000实例
         public static bool Connect(out string message)
         {
@@ -135,10 +142,22 @@ namespace RhinoToSAP
         //断开连接（一般不用手动调用，关闭Rhino自动释放）
         public static void Disconnect()
         {
+            if (_isDisconnecting) return;// 正在断开中，不重复执行
+            _isDisconnecting = true;
             try
             {
-                //保存映射表
-                SyncPersistenceIO.SaveMapping();
+                //断开前询问保存映射表
+                if (SyncEngine.IsMappingLoaded)
+                {
+                    var result = Rhino.UI.Dialogs.ShowMessage(
+                                "是否保存当前映射文件？", "关闭Rhino",
+                                Rhino.UI.ShowMessageButton.YesNoCancel,
+                                Rhino.UI.ShowMessageIcon.Question);
+                    if (result == Rhino.UI.ShowMessageResult.Yes)
+                    {
+                        SyncPersistenceIO.SaveMapping();
+                    }
+                }
 
                 // 先停止同步引擎，注销事件、释放所有计时器
                 SyncEngine.Shutdown();

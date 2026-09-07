@@ -110,12 +110,23 @@ namespace RhinoToSAP.Sync
             }
         }
 
-        //保存
-        public static void OnRhinoDocumentSaved(object sender,DocumentSaveEventArgs e)
+        // Rhino关闭时触发：弹窗问是否保存映射文件，保存或放弃后自动断开
+        public static void OnRhinoClosing(object sender, EventArgs e)
         {
-            SyncPersistenceIO.SaveMapping();
+            if (!SyncEngine.IsMappingLoaded) return;
+            {
+                try
+                {
+                    SAPConnector.Disconnect();
+                }
+                catch (Exception ex)
+                {
+                    RhinoApp.WriteLine($"[OnRhinoClosing] 异常：{ex.Message}");
+                }
+            }
         }
-        
+
+
         // 处理单个Frame对象的变化：判断是新增、修改还是删除，调用对应方法
         public static void ProcessSingleChange(RhinoDoc doc, Guid rhinoId)
         {
